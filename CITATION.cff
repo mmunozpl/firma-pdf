@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "Si usas este software, cítalo así. If you use this software, please cite it as below."
+type: software
+title: "FirmaManPla. Firma de PDF con pie visible y código QR"
+abstract: "Aplicación de escritorio para firmar PDF en PAdES con un certificado instalado o un fichero PKCS#12, con un pie visible y un código QR en cada página y comprobación de la firma. Firma en PAdES-B-B y valida en local contra las listas de confianza de la UE. Prueba de concepto sin garantía, mantenimiento ni soporte."
+authors:
+  - family-names: "Muñoz Plá"
+    given-names: "Manuel"
+    orcid: "https://orcid.org/0009-0000-5714-912X"
+version: "0.3.0"
+date-released: "2026-11-19"
+license: Apache-2.0
+repository-code: "https://github.com/mmunozpl/firma-pdf"
+url: "https://manpla.net/posts/firmar-pdf-certificado-fnmt/"
+keywords:
+  - PAdES
+  - firma electrónica
+  - electronic signature
+  - FNMT
+  - pyHanko

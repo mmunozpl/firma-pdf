@@ -1,0 +1,49 @@
+<!--
+  instalador msi de FirmaManPla, por usuario y sin permisos de administrador.
+  la carpeta de PyInstaller entra entera con Files (WiX 5 o posterior); la
+  ruta se pasa con -bindpath app=dist\FirmaManPla y la versión con
+  -d Version=x.y.z. El UpgradeCode no se cambia nunca: es el que permite
+  que una versión nueva sustituya a la anterior.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="FirmaManPla" Manufacturer="Manuel Muñoz Plá"
+           Version="$(var.Version)"
+           UpgradeCode="6D1E681E-8634-4C36-A8A6-5E2F3CCD04B0"
+           Scope="perUser" Language="3082" Codepage="1252">
+    <MajorUpgrade
+      DowngradeErrorMessage="Ya hay instalada una versión más reciente de [ProductName]." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="Icono.exe" SourceFile="!(bindpath.app)\FirmaManPla.exe" />
+    <Property Id="ARPPRODUCTICON" Value="Icono.exe" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramasUsuario" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="FirmaManPla" />
+      </Directory>
+    </StandardDirectory>
+
+    <ComponentGroup Id="Aplicacion" Directory="INSTALLFOLDER">
+      <Files Include="!(bindpath.app)\**" />
+    </ComponentGroup>
+
+    <Component Id="AccesoDirecto" Directory="ProgramMenuFolder">
+      <Shortcut Id="AccesoMenu" Name="FirmaManPla"
+                Description="Firma de PDF con pie visible y código QR"
+                Target="[INSTALLFOLDER]FirmaManPla.exe"
+                WorkingDirectory="INSTALLFOLDER" Icon="Icono.exe" />
+      <RemoveFolder Id="QuitarCarpeta" Directory="INSTALLFOLDER"
+                    On="uninstall" />
+      <RemoveFolder Id="QuitarProgramas" Directory="ProgramasUsuario"
+                    On="uninstall" />
+      <RegistryValue Root="HKCU" Key="Software\ManPla\FirmaManPla"
+                     Name="instalado" Type="integer" Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <Feature Id="Principal">
+      <ComponentGroupRef Id="Aplicacion" />
+      <ComponentRef Id="AccesoDirecto" />
+    </Feature>
+  </Package>
+</Wix>

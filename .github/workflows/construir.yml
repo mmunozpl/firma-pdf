@@ -1,0 +1,91 @@
+# construye la aplicación en cada sistema: PyInstaller no compila para otros.
+# cada sistema da su paquete: AppImage en Linux, .msi en Windows y .dmg en
+# macOS. Con una etiqueta v*, publica además la release con los tres
+# paquetes y sus huellas
+name: construir
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+env:
+  # WiX 5.0.2: licencia MS-RL, sin contrato aparte, sin parches desde el
+  # 05-02-2026. Para la 7.x: WIX_VERSION 7.0.1 y WIX_OPCIONES con
+  # «-acceptEula wix7» (contrato OSMF de FireGiant)
+  WIX_VERSION: "5.0.2"
+  WIX_OPCIONES: ""
+jobs:
+  construir:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.11
+      - run: uv sync --frozen --group construir
+      - name: wix (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version $env:WIX_VERSION
+          "$env:USERPROFILE\.dotnet\tools" >> $env:GITHUB_PATH
+      - run: uv run --frozen python construir.py
+      # autoprueba de cada paquete: pie, QR y recursos, sin ventana
+      # bibliotecas gráficas que trae un escritorio y no la máquina de pruebas
+      - name: bibliotecas de qt (linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+      - name: autoprueba del AppImage (linux)
+        if: runner.os == 'Linux'
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: ./dist/FirmaManPla-*.AppImage --autoprueba
+      - name: autoprueba del dmg (macos)
+        if: runner.os == 'macOS'
+        run: |
+          hdiutil attach dist/FirmaManPla-*.dmg -mountpoint /tmp/fmp -nobrowse
+          codesign --verify --deep --strict /tmp/fmp/FirmaManPla.app
+          /tmp/fmp/FirmaManPla.app/Contents/MacOS/FirmaManPla --autoprueba
+          hdiutil detach /tmp/fmp
+      - name: autoprueba del msi (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem dist\FirmaManPla-*.msi).FullName
+          $p = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /l*v instalar.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content instalar.log -Tail 40; exit $p.ExitCode }
+          $exe = "$env:LOCALAPPDATA\Programs\FirmaManPla\FirmaManPla.exe"
+          $p = Start-Process -FilePath $exe -ArgumentList '--autoprueba' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { exit $p.ExitCode }
+          $p = Start-Process msiexec.exe -ArgumentList "/x `"$msi`" /qn" -Wait -PassThru
+          exit $p.ExitCode
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FirmaManPla-${{ matrix.os }}
+          path: |
+            dist/*.AppImage
+            dist/*.msi
+            dist/*.dmg
+  publicar:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: construir
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          path: paquetes
+          merge-multiple: true
+      - name: huellas
+        run: cd paquetes && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - name: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" paquetes/*
+          --title "FirmaManPla $GITHUB_REF_NAME"
+          --notes-file NOTAS_VERSION.md
