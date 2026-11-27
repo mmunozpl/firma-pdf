@@ -85,7 +85,7 @@ from reportlab.pdfgen import canvas
 import almacenes
 
 # versión de la aplicación (la misma que pyproject.toml)
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 
 # condiciones de uso: un solo texto para la ventana, para «--condiciones» y
 # para la portada del repositorio. Su versión es la fecha del texto, con su
@@ -138,6 +138,10 @@ def _carpeta_datos() -> Path:
                                    Path.home() / ".local" / "share"))
     carpeta = base / "ManPla" / "firma-pdf"
     carpeta.mkdir(parents=True, exist_ok=True)
+    # el registro nombra documentos y firmantes: solo para el usuario,
+    # también en una carpeta creada por una versión anterior
+    if os.name != "nt":
+        carpeta.chmod(0o700)
     return carpeta
 
 
@@ -618,6 +622,10 @@ def preparar(entrada: Path, datos: dict, fecha: str, ident: str,
         y_tabla = y_org + MARGEN + ALTO_NOTA
         caja = (x_org + MARGEN, y_tabla, x_org + ancho - MARGEN,
                 y_tabla + ALTO_TABLA)
+    # los metadatos del original (autor, título, programa, fechas, XMP) no
+    # pasan al firmado: solo queda el firmante como autor
+    escritor.metadata = None
+    escritor.root_object.pop(NameObject("/Metadata"), None)
     escritor.add_metadata({"/Author": datos["nombre"]})
     buf = io.BytesIO()
     escritor.write(buf)
@@ -677,6 +685,97 @@ def _cambios(est) -> str:
             "OTHER": "otros cambios: revisar"}.get(nivel.name, nivel.name)
 
 
+def _red_validacion():
+    """Red de la validación: solo revocación, y solo a direcciones públicas.
+
+    Un PDF ajeno trae en sus certificados las direcciones que el emisor del
+    documento quiera. Para que comprobarlo no revele la IP ni la hora a esas
+    direcciones, ni alcance la red local, no se descargan los certificados
+    que pida el documento (AIA caIssuers): la cadena ha de venir en la firma
+    o en las anclas. La revocación (CRL y OCSP) solo se consulta en cadenas
+    que ya llegan a un ancla, cuyas direcciones fija la autoridad; y ninguna
+    conexión, redirecciones incluidas, va a una dirección que no sea
+    pública (privada, local, de enlace o reservada).
+
+    Returns:
+        El gestor de descargas para ValidationContext(fetcher_backend=…).
+    """
+    import ipaddress
+    import ssl
+
+    import aiohttp
+    import certifi
+    from pyhanko_certvalidator.fetchers import (CertificateFetcher,
+                                                Fetchers)
+    from pyhanko_certvalidator.fetchers.aiohttp_fetchers import (
+        AIOHttpFetcherBackend)
+    from pyhanko_certvalidator.fetchers.aiohttp_fetchers.util import (
+        LazySession)
+    from pyhanko_certvalidator.fetchers.api import OwnedFetcherBackend
+
+    class ConectorPublico(aiohttp.TCPConnector):
+        """Descarta las direcciones que no son públicas, también las que
+        llegan escritas como IP o tras una redirección."""
+
+        async def _resolve_host(self, host, port, traces=None):
+            todas = await super()._resolve_host(host, port, traces=traces)
+            publicas = [r for r in todas
+                        if ipaddress.ip_address(r["host"]).is_global]
+            if not publicas:
+                raise aiohttp.ClientConnectionError(
+                    f"{host}: dirección no pública, no se consulta")
+            return publicas
+
+    class SesionPublica(LazySession):
+        """La sesión de pyHanko (mismas raíces TLS, de certifi) con el
+        conector que solo admite direcciones públicas."""
+
+        def get_session(self):
+            if self._session is None:
+                contexto_tls = ssl.create_default_context(
+                    cafile=certifi.where())
+                self._session = aiohttp.ClientSession(
+                    connector=ConectorPublico(ssl=contexto_tls))
+            return self._session
+
+    class SinEmisores(CertificateFetcher):
+        """No descarga certificados que pida el documento."""
+
+        async def fetch_cert_issuers(self, cert):
+            return
+            yield
+
+        async def fetch_crl_issuers(self, certificate_list):
+            return
+            yield
+
+        def fetched_certs(self):
+            return ()
+
+    class RedPublica(AIOHttpFetcherBackend):
+        def get_fetchers(self):
+            f = super().get_fetchers()
+            return Fetchers(ocsp_fetcher=f.ocsp_fetcher,
+                            crl_fetcher=f.crl_fetcher,
+                            cert_fetcher=SinEmisores())
+
+    return OwnedFetcherBackend(RedPublica(session=SesionPublica()))
+
+
+AVISO_SIN_CADENA = ("  aviso: la firma no trae su cadena de certificados "
+                    "completa, y la\n  aplicación no descarga los que pida "
+                    "el documento")
+
+
+def _sin_cadena(est) -> bool:
+    """Si la firma no llega a un ancla por falta de un certificado de la
+    cadena, que la aplicación no descarga (_red_validacion)."""
+    return (est.intact and est.valid and not est.trusted
+            and est.validation_path is None
+            and getattr(est.trust_problem_indic, "name", "")
+            in ("", "NO_CERTIFICATE_CHAIN_FOUND"))
+
+
 def comprobar(pdf: Path, revocacion: str) -> bool:
     """Valida las firmas de un PDF contra la raíz de la FNMT.
 
@@ -704,12 +803,14 @@ def comprobar(pdf: Path, revocacion: str) -> bool:
     contexto = ValidationContext(
         trust_roots=[load_cert_from_pemder(str(RAIZ_FNMT))],
         allow_fetching=True, revocation_mode=revocacion,
+        fetcher_backend=_red_validacion(),
     )
     # el sello se valida contra las raíces de sellado, con sus intermedias
     contexto_ts = ValidationContext(
         trust_roots=[load_cert_from_pemder(str(p)) for p in CONFIANZA_TSA],
         other_certs=[load_cert_from_pemder(str(p)) for p in INTERMEDIOS_TSA],
         allow_fetching=True, revocation_mode="soft-fail",
+        fetcher_backend=_red_validacion(),
     )
     with pdf.open("rb") as fh:
         firmas = PdfFileReader(fh).embedded_signatures
@@ -771,6 +872,8 @@ def comprobar(pdf: Path, revocacion: str) -> bool:
             print(f"firma {n} ({firma.field_name})")
             for k, v in filas:
                 print(f"  {k:<22}{v}")
+            if _sin_cadena(est):
+                print(AVISO_SIN_CADENA)
             todo_bien &= est.bottom_line
     huella = hashlib.sha256(pdf.read_bytes()).hexdigest()
     anotado = None
@@ -812,7 +915,12 @@ def _anotar(fila: dict) -> None:
             lector = csv.DictReader(fh)
             if lector.fieldnames != campos:
                 filas = list(lector)
-    if filas or not REGISTRO.exists():
+    if os.name != "nt":
+        # se crea con permisos solo para el usuario, y se corrige el de un
+        # registro anterior
+        os.close(os.open(REGISTRO, os.O_WRONLY | os.O_CREAT, 0o600))
+        REGISTRO.chmod(0o600)
+    if filas or not REGISTRO.exists() or not REGISTRO.stat().st_size:
         with REGISTRO.open("w", encoding="utf-8", newline="") as fh:
             w = csv.DictWriter(fh, fieldnames=campos, restval="")
             w.writeheader()
@@ -2137,10 +2245,10 @@ def validar_ue(pdf: Path, revocacion: str) -> bool:
     evaluador = QualificationAssessor(registro)
     contexto = ValidationContext(
         trust_manager=TSPTrustManager(registro), allow_fetching=True,
-        revocation_mode=revocacion)
+        revocation_mode=revocacion, fetcher_backend=_red_validacion())
     contexto_ts = ValidationContext(
         trust_manager=GestorSellos(registro), allow_fetching=True,
-        revocation_mode="soft-fail")
+        revocation_mode="soft-fail", fetcher_backend=_red_validacion())
     with pdf.open("rb") as fh:
         firmas = PdfFileReader(fh).embedded_signatures
         if not firmas:
@@ -2218,6 +2326,8 @@ def validar_ue(pdf: Path, revocacion: str) -> bool:
             print(f"firma {n} ({firma.field_name})")
             for k, v in filas:
                 print(f"  {k:<22}{v}")
+            if _sin_cadena(est):
+                print(AVISO_SIN_CADENA)
             todo_bien &= est.bottom_line
     print("resultado:", "VÁLIDO" if todo_bien else "NO VÁLIDO")
     return todo_bien

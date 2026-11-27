@@ -4,7 +4,7 @@
 
 **Manuel Muñoz Plá**
 
-[![Release](https://img.shields.io/badge/Release-v0.3.0-009e73)](https://github.com/mmunozpl/firma-pdf/releases/tag/v0.3.0)
+[![Release](https://img.shields.io/badge/Release-v0.3.1-009e73)](https://github.com/mmunozpl/firma-pdf/releases/tag/v0.3.1)
 [![Web](https://img.shields.io/badge/Web-manpla.net-009e73)](https://manpla.net/posts/firmar-pdf-certificado-fnmt/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-009e73)](LICENSE)
 [![ORCID](https://img.shields.io/badge/ORCID-0009--0000--5714--912X-a6ce39)](https://orcid.org/0009-0000-5714-912X)
@@ -65,7 +65,9 @@ Los paquetes no llevan firma de código, así que Windows y macOS avisan al abri
 - Añade la firma a un documento que llega ya firmado (un contrato firmado por la otra parte, por ejemplo) sin modificar su contenido: el recuadro va en el hueco en blanco más bajo de la última página, como apariencia del campo de la firma nueva, e indica quién firmó antes según las firmas del propio documento. Las firmas previas siguen valiendo. Si el documento lleva una firma de certificación que no admite cambios, la aplicación se niega.
 - Comprueba la firma en local contra AC Raíz FNMT-RCM, con revocación por OCSP, e informa de los cambios añadidos después de cada firma.
 - Valida la firma en el propio equipo contra las listas de confianza de la UE con «Validar con las listas de la UE» (o `firmar.py --ue`), con [pyHanko](https://github.com/MatthiasValvekens/pyHanko): la lista de listas de la Comisión y las listas nacionales a las que apunta (31 en la del 9 de noviembre de 2026, de las que se cargan 29: véase «Límites»), con la firma de cada una comprobada, que son las que usa [DSS](https://ec.europa.eu/digital-building-blocks/DSS/webapp-demo/validation), el validador de la Comisión. Dice si el certificado encadena con un servicio cualificado de esas listas, el nivel de la firma (cualificada, avanzada basada en certificado cualificado o avanzada) y si cada sello de tiempo lo emite un servicio de sellado cualificado. Se descargan las listas (unos 27 MB, que se guardan un día en la carpeta de datos) y la revocación: el documento no sale del equipo. La firma se puede validar también en [VALIDe](https://valide.redsara.es) y en Autofirma y Adobe Acrobat Reader, que validan en local.
-- Guarda un registro local de firmas con las huellas del original y del firmado.
+- Guarda un registro local de firmas con las huellas del original y del firmado, en una carpeta de datos que solo puede leer el usuario.
+- Al comprobar o validar un documento ajeno, solo consulta la revocación de los certificados que ya encadenan con un ancla de confianza, y nunca una dirección privada o local: no descarga los certificados que pida el propio documento, así que quien lo envía no sabe cuándo se comprueba. Una firma que no trae su cadena completa queda sin encadenar, con un aviso.
+- El firmado no conserva los metadatos del original (título, autor, programa, fechas): solo el firmante, como autor.
 
 ## Desde el código
 
@@ -103,7 +105,7 @@ PyInstaller solo construye para el sistema en que se ejecuta, y `construir.py` e
   author  = {Muñoz Plá, Manuel},
   title   = {FirmaManPla. Firma de PDF con pie visible y código QR},
   year    = {2026},
-  version = {0.3.0},
+  version = {0.3.1},
   url     = {https://github.com/mmunozpl/firma-pdf},
   license = {Apache-2.0}
 }

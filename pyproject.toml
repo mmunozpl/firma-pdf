@@ -1,6 +1,6 @@
 [project]
 name = "firma-pdf"
-version = "0.3.0"
+version = "0.3.1"
 description = "Firma de PDF con certificado de la FNMT y pie de firma en cada página"
 authors = [{ name = "Manuel Muñoz Plá" }]
 # prueba de concepto sin garantía (LICENCIAS.md)

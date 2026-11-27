@@ -4,7 +4,7 @@
 
 **Manuel Muñoz Plá**
 
-[![Release](https://img.shields.io/badge/Release-v0.3.0-009e73)](https://github.com/mmunozpl/firma-pdf/releases/tag/v0.3.0)
+[![Release](https://img.shields.io/badge/Release-v0.3.1-009e73)](https://github.com/mmunozpl/firma-pdf/releases/tag/v0.3.1)
 [![Web](https://img.shields.io/badge/Web-manpla.net-009e73)](https://manpla.net/en/posts/signing-pdf-fnmt-certificate/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-009e73)](LICENSE)
 [![ORCID](https://img.shields.io/badge/ORCID-0009--0000--5714--912X-a6ce39)](https://orcid.org/0009-0000-5714-912X)
@@ -67,7 +67,9 @@ The interface and the signature footer are in Spanish.
 - Adds the signature to a document that arrives already signed (a contract signed by the other party, for example) without modifying its content: the box goes in the lowest blank space of the last page, as the appearance of the new signature field, and states who signed before, from the signatures of the document itself. The earlier signatures remain valid. If the document carries a certification signature that allows no changes, the application refuses.
 - Checks the signature locally against AC Raíz FNMT-RCM, with revocation over OCSP, and reports the changes appended after each signature.
 - Validates the signature on the computer itself against the EU trusted lists with "Validar con las listas de la UE" (or `firmar.py --ue`), using [pyHanko](https://github.com/MatthiasValvekens/pyHanko): the Commission's list of trusted lists and the national lists it points to (31 in that of 9 November 2026, of which 29 are loaded: see "Limits"), with the signature of each one checked, which are the lists [DSS](https://ec.europa.eu/digital-building-blocks/DSS/webapp-demo/validation), the Commission's validator, uses. It reports whether the certificate chains to a qualified service in those lists, the level of the signature (qualified, advanced based on a qualified certificate or advanced) and whether each time stamp is issued by a qualified time-stamping service. The lists (about 27 MB, kept for a day in the data folder) and the revocation data are downloaded: the document never leaves the computer. The signature can also be validated in [VALIDe](https://valide.redsara.es) and in Autofirma and Adobe Acrobat Reader, which validate locally.
-- Keeps a local signing log with the hashes of the original and the signed file.
+- Keeps a local signing log with the hashes of the original and the signed file, in a data folder only the user can read.
+- When checking or validating someone else's document, it only queries revocation for certificates that already chain to a trust anchor, and never a private or local address: it does not download the certificates the document itself asks for, so whoever sent it does not learn when it is checked. A signature that does not carry its full chain is left unchained, with a warning.
+- The signed file does not keep the metadata of the original (title, author, program, dates): only the signer, as author.
 
 ## From the source code
 
@@ -105,7 +107,7 @@ PyInstaller only builds for the system it runs on, and `construir.py` then packa
   author  = {Muñoz Plá, Manuel},
   title   = {FirmaManPla. Firma de PDF con pie visible y código QR},
   year    = {2026},
-  version = {0.3.0},
+  version = {0.3.1},
   url     = {https://github.com/mmunozpl/firma-pdf},
   license = {Apache-2.0}
 }
